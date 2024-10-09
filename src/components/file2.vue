@@ -1,10 +1,10 @@
 <template>
-  <div class="container mt-4" style="width: 1200vw;" >
+  <div class="container mt-4" style="width: 1200vw;">
     <ul class="nav nav-tabs">
       <li class="nav-item">
         <a
           class="nav-link"
-          :class="{ active: activeTab === 'chat' }"
+          :class="{ active: activeTab === 'chat', 'tab-highlight': activeTab === 'chat' }"
           @click="activeTab = 'chat'"
           href="#"
         >
@@ -14,7 +14,7 @@
       <li class="nav-item">
         <a
           class="nav-link"
-          :class="{ active: activeTab === 'document' }"
+          :class="{ active: activeTab === 'document', 'tab-highlight': activeTab === 'document' }"
           @click="activeTab = 'document'"
           href="#"
         >
@@ -123,29 +123,26 @@
             </div>
           </div>
         </div>
-        <div class="col-md-3" style="width: 50vw; height: 80vh;" >
-          <!-- File Summary Section -->
-          <div class="file-summary border p-3" style="height: 80vh;" >
-            <h4>File Summary</h4>
-            <div v-if="!fileSummary || fileSummary.length === 0">No file summary</div>
-            <div v-if="fileSummary" v-for="summary in fileSummary">
-              <p>{{ summary }}</p>
-            </div>
-          </div>
-          
-        </div>
+        <!-- File Summary Section -->
+<div class="col-md-3" style="width: 50vw; height: 80vh;">
+  <div class="file-summary border p-3" style="height: 80vh;">
+    <h4>File Summary</h4>
+    <!-- This is where the fileSummary will be rendered -->
+    <div v-if="fileSummary.length > 0">
+      <div v-for="summary in fileSummary" :key="summary" v-html="summary" class="summary-item"></div>
+    </div>
+    <div v-else>No file summary</div>
+  </div>
+</div>
 
-        <div class="col-md-3" style="width: 50vw; height: 80vh;" >
-          <!-- File Summary Section -->
-          <div class="file-summary border p-3" style="height: 80vh;" >
-            <h4>Chunks</h4>
-            <div v-if="!fileSummary || fileSummary.length === 0">Chunks</div>
-            <div v-if="fileSummary" v-for="summary in fileSummary">
-              <p>{{ summary }}</p>
-            </div>
-          </div>
-          
-        </div>
+<!-- Chunks Section -->
+<div class="col-md-3" style="width: 50vw; height: 80vh;">
+  <div class="file-summary border p-3" style="height: 80vh;">
+    <h4>Chunks</h4>
+    <div v-if="!chunksSummary || chunksSummary.length === 0">No chunks</div>
+    <div v-if="chunksSummary" v-for="chunk in chunksSummary" v-html="chunk" class="chunk-item"></div>
+  </div>
+</div>
       </div>
     </div>
 
@@ -225,7 +222,8 @@ export default {
       chunksSummary: [],
       addQuery: "",
       lastMessage: "",
-      botTyping: false  // Track when the bot is "typing"
+      botTyping: false,  // Track when the bot is "typing"
+      isSending: false  // Flag to prevent duplicate submissions
     };
   },
   methods: {
@@ -240,6 +238,8 @@ export default {
     }
   });
 
+  
+
   // Replace empty lines in the text with '\n'
   text = text.replace(/^\s*$/gm, '\n');
 
@@ -249,10 +249,29 @@ export default {
   return text
 },
 
+scrollToBottom() {
+        this.$nextTick(() => {
+            const chatBody = this.$refs.chatBody;
+            if (chatBody) {
+                chatBody.scrollTo({
+                    top: chatBody.scrollHeight,
+                    behavior: 'smooth' // Enables smooth scrolling
+                });
+            }
+        });
+    },
+
     async sendMessage() {
+      // Check if already sending a message
+      if (this.isSending) return;
+
+
       const message = this.userMessage.trim(); // Trim whitespace
       this.lastMessage = message;
       if (message) {
+        this.isSending = true; // Set the flag to true
+
+
         // Add user message to the chat
         this.messages.push({ sender: "user", text: message });
         this.userMessage = ""; // Clear input field after sending message
@@ -261,8 +280,13 @@ export default {
         this.fileSummary = [];
         this.chunksSummary = [];
 
+        // Call scrollToBottom to scroll to the latest message
+        this.scrollToBottom();
+
         // Show bot typing indicator
         this.botTyping = true;
+
+
 
        
         // upload message
@@ -277,12 +301,12 @@ export default {
             await response.data.chunks.forEach((chunk) => {
               this.chunksSummary.push(chunk);
               this.fileSummary.push(
-                `chunk_id: ${chunk.chunk_id}`,
-                `doc_name: ${chunk.doc_name}`,
-                `doc_uuid: ${chunk.doc_uuid}`,
-                `score: ${chunk.score}`,
-                `text: ${chunk.text}`
-              );
+  `<span style="color: blue;">chunk id: ${chunk.chunk_id}</span>`,
+  `<span style="color: blue;">doc name: ${chunk.doc_name}</span>`,
+  `<span style="color: blue;">doc uuid: ${chunk.doc_uuid}</span>`,
+  `<span style="color: blue;">score: ${chunk.score}</span>`,
+  `<span>text: ${chunk.text}</span>`
+);
             })
             
             console.log("Response received:", response.data);
@@ -315,13 +339,21 @@ export default {
      this.messages.push({ sender: "bot", text: this.cleanText(text) });
             })
 
+            // Call scrollToBottom to scroll to the latest message
+          // this.scrollToBottom();
+
              // Hide typing indicator after receiving response
-              this.botTyping = false; // Bot finished typing
+              // this.botTyping = false; // Bot finished typing
+              
           } catch (error) {
             // Handle any errors
             console.error("Error:", error);
             alert("Failed to fetch response.");
-          }
+          } finally {
+      this.isSending = false; // Reset the sending flag
+      this.botTyping = false; // Hide typing indicator after response
+      this.scrollToBottom(); // Scroll to latest message
+    }
     
 
 
@@ -338,6 +370,7 @@ export default {
   
   return cleanedText;
 },
+
 
     
 
@@ -425,10 +458,27 @@ small{
   color: rgba(187,242,255,255);
 }
 
-.nav-tabs .nav-link {
+/* .nav-tabs .nav-link {
   cursor: pointer;
   background: rgb(237, 237, 237,1);
   backdrop-filter: blur(10px);
+} */
+
+.nav-tabs .nav-link.tab-highlight {
+  background-color: #007FFF; /* Blue color for active tab */
+  color: white; /* White text on active tab */
+  font-weight: bold; /* Optional: Make text bold for emphasis */
+}
+
+.nav-tabs .nav-link {
+  cursor: pointer;
+  background: rgb(237, 237, 237, 1); /* Default background color */
+  backdrop-filter: blur(10px);
+  color: black;
+}
+
+.nav-tabs .nav-link.active {
+  border-color: #007FFF; /* Blue border for active tab */
 }
 
 .chat-section,
