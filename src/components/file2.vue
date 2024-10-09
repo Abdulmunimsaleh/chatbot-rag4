@@ -1,5 +1,5 @@
 <template>
-  <div class="container mt-4">
+  <div class="container mt-4" style="width: 1200vw;" >
     <ul class="nav nav-tabs">
       <li class="nav-item">
         <a
@@ -23,8 +23,8 @@
       </li>
     </ul>
 
-    <div v-if="activeTab === 'chat'" class="tab-content mt-4">
-      <div class="row" style="width: 60vw; height: 80vh;">
+    <div v-if="activeTab === 'chat'" class="tab-content mt-4" style="width: 100vw;">
+      <div class="row" style="width: 100vw; height: 80vh;">
         <div class="col-md-6">
           <!-- Chatbot Section -->
           <div class="main-content-body">
@@ -33,7 +33,7 @@
                 <img alt="" src="/src/assets/img/faces/bot2.avif" />
               </div>
               <div class="main-chat-msg-name">
-                <h6>Mombasa County Robo</h6>
+                <h6>Chatbot</h6>
                 <small>Online</small>
               </div>
             </div>
@@ -92,10 +92,24 @@
                     </div>
                   </div>
                 </div>
+                 <!-- Typing Indicator -->
+                 <div v-if="botTyping" class="media">
+                  <div class="main-img-user">
+                    <img src="/src/assets/img/faces/bot.avif" alt="" />
+                  </div>
+                  <div class="media-body">
+                    <div class="main-msg-wrapper">
+                      <div class="typing-indicator">
+                        <span></span><span></span><span></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
             <!-- Main chat footer -->
-            <div class="main-chat-footer" style="width: 30vw ; ">
+            <div class="main-chat-footer" style="width: 48.5vw ; ">
               <input
                 class="form-control"
                 v-model="userMessage"
@@ -109,15 +123,28 @@
             </div>
           </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-3" style="width: 50vw; height: 80vh;" >
           <!-- File Summary Section -->
-          <div class="file-summary border p-3">
+          <div class="file-summary border p-3" style="height: 80vh;" >
             <h4>File Summary</h4>
             <div v-if="!fileSummary || fileSummary.length === 0">No file summary</div>
             <div v-if="fileSummary" v-for="summary in fileSummary">
               <p>{{ summary }}</p>
             </div>
           </div>
+          
+        </div>
+
+        <div class="col-md-3" style="width: 50vw; height: 80vh;" >
+          <!-- File Summary Section -->
+          <div class="file-summary border p-3" style="height: 80vh;" >
+            <h4>Chunks</h4>
+            <div v-if="!fileSummary || fileSummary.length === 0">Chunks</div>
+            <div v-if="fileSummary" v-for="summary in fileSummary">
+              <p>{{ summary }}</p>
+            </div>
+          </div>
+          
         </div>
       </div>
     </div>
@@ -194,34 +221,110 @@ export default {
       loading: false, // Loading state
       userMessage: "", // User input message
       messages: [], // Array to hold chat messages
-      fileSummary: []
+      fileSummary: [],
+      chunksSummary: [],
+      addQuery: "",
+      lastMessage: "",
+      botTyping: false  // Track when the bot is "typing"
     };
   },
   methods: {
+    processChunks(result) {
+  let text = ''; // Variable to store the text of the item with the max score
+
+  result.forEach((item) => {
+    // Find max of item.score
+    if (!text || item.score > result.maxScore) {
+      text = item.text;
+      result.maxScore = item.score; // Keep track of the max score in result object
+    }
+  });
+
+  // Replace empty lines in the text with '\n'
+  text = text.replace(/^\s*$/gm, '\n');
+
+  console.log("Summary: ", this.fileSummary);
+  console.log("Text: ", text);
+  // return this.fileSummary[0] + text;
+  return text
+},
+
     async sendMessage() {
       const message = this.userMessage.trim(); // Trim whitespace
+      this.lastMessage = message;
       if (message) {
         // Add user message to the chat
         this.messages.push({ sender: "user", text: message });
         this.userMessage = ""; // Clear input field after sending message
+
+         // Clear previous data before new request
+        this.fileSummary = [];
+        this.chunksSummary = [];
+
+        // Show bot typing indicator
+        this.botTyping = true;
+
+       
         // upload message
         try {
             const response = await axios.post(
-              "http://192.168.0.195:8000/api/query",
+              "http://192.168.0.193:8000/api/query",
               {
                 query: message
               }
             );
-            const chunks = response.data.chunks[0];
-            this.fileSummary.push(
-              response.data.context,
-              `chunk id: ${response.data.chunks[0].chunk_id}`,
-              `doc name: ${response.data.chunks[0].doc_name}`,
-              `doc uuid: ${response.data.chunks[0].doc_uuid}`,
-              `score: ${response.data.chunks[0].score}`,
-              `text: ${response.data.chunks[0].text}`
-            );
+            this.fileSummary.push(response.data.context);
+            await response.data.chunks.forEach((chunk) => {
+              this.chunksSummary.push(chunk);
+              this.fileSummary.push(
+                `chunk_id: ${chunk.chunk_id}`,
+                `doc_name: ${chunk.doc_name}`,
+                `doc_uuid: ${chunk.doc_uuid}`,
+                `score: ${chunk.score}`,
+                `text: ${chunk.text}`
+              );
+            })
+            
             console.log("Response received:", response.data);
+            console.log("Concatenated: ", this.processChunks(this.chunksSummary));
+            this.addQuery = "";
+            this.addQuery = {
+              "context" : this.processChunks(this.chunksSummary),
+              "conversation" : [],
+              "query" : this.lastMessage
+            }
+
+        
+
+            try {
+            const response = await axios.post(
+              "http://192.168.0.193:8000/api/query",
+              this.addQuery
+            );
+            console.log("response", response)
+            let text = ''; // Variable to store the text of the item with the max score
+
+            response.data.chunks.forEach((item) => {
+              // Find max of item.score
+              if (!text || item.score > response.data.maxScore) {
+                text = item.text;
+                response.data.maxScore = item.score; // Keep track of the max score in result object
+              }
+              console.log("The answer is:",text);
+               // Bot response 
+     this.messages.push({ sender: "bot", text: this.cleanText(text) });
+            })
+
+             // Hide typing indicator after receiving response
+              this.botTyping = false; // Bot finished typing
+          } catch (error) {
+            // Handle any errors
+            console.error("Error:", error);
+            alert("Failed to fetch response.");
+          }
+    
+
+
           } catch (error) {
             // Handle any errors
             console.error("Error:", error);
@@ -229,6 +332,15 @@ export default {
           }
       }
     },
+    cleanText(text) {
+  // Define the pattern for special characters to remove, keep alphanumerics and basic punctuation.
+  const cleanedText = text.replace(/[^a-zA-Z0-9.,!?;:'"()\s-]/g, "");
+  
+  return cleanedText;
+},
+
+    
+
     handleFileUpload(event) {
       this.selectedFile = event.target.files[0]; // Get the selected file
       this.uploadLog = this.selectedFile.name; // Store the file name
@@ -258,7 +370,7 @@ export default {
 
           try {
             const response = await axios.post(
-              "http://192.168.0.195:8000/api/import",
+              "http://192.168.0.193:8000/api/import",
               {
                 data: [
                   {
@@ -300,6 +412,19 @@ export default {
 </script>
 
 <style scoped>
+.main-chat-header {
+  background-color: #0033CC;
+  width:48.4vw;
+}
+
+h6 { 
+  color: rgba(187,242,255,255);
+}
+
+small{
+  color: rgba(187,242,255,255);
+}
+
 .nav-tabs .nav-link {
   cursor: pointer;
   background: rgb(237, 237, 237,1);
@@ -358,6 +483,61 @@ textarea {
   height: calc(80vh - 70px); /* Adjust for footer height */
   overflow-y: auto;
   padding-bottom: 60px; /* Space for footer */
+  background-color: rgba(255,255,255,255);
 }
 
+.typing-indicator {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  height: 20px;
+}
+
+.typing-indicator span {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 2px;
+  background-color: #ccc;
+  border-radius: 50%;
+  opacity: 0;
+  animation: typing 1.5s infinite;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: 0.2s;
+}
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.4s;
+}
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+@keyframes typing {
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.main-chat-body .media.flex-row-reverse .main-msg-wrapper {
+    background-color: #007FFF;
+    color: #fff;
+}
+
+.main-msg-wrapper {
+  background-color: rgba(239,242,247,255);
+  color: rgba(39,45,59,255);
+}
+
+
 </style>
+
+now make it when I select the chat section it the bar at the chat part is highlighted with a color blue when the document upload section is selected the bar part of the select section it changes to blue also
+
